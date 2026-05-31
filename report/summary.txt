@@ -1,0 +1,8 @@
+LEAP-UCD-2017 sloping-ground - results summary
+================================================
+duration analysed        : 20.02 s
+peak base accel          : 0.162 g
+peak surface accel       : 1.491 g
+max ru (any depth)       : 1.000
+residual surface disp    : 0.9724 m
+peak surface disp        : 0.9724 m
