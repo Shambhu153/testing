@@ -2,8 +2,8 @@
 
 A small, runnable OpenSeesPy mini-project that simulates the **LEAP-UCD-2017**
 mildly **sloping ground** liquefaction / lateral-spreading experiment and
-post-processes the results for validation against the DesignSafe **PRJ-1843**
-data.
+validates it against the DesignSafe **PRJ-1843** centrifuge data, using **both**
+the recorded **accelerations** and **pore pressures**.
 
 The deposit (saturated, medium-dense Ottawa F-65 sand, ~5° slope) is modelled
 as an **effective-stress, fully-coupled (u-p)** infinite slope using:
@@ -42,7 +42,7 @@ opensees_leap/
 ├── output/                    # (generated) recorder time histories *.out
 ├── postprocess/
 │   ├── plot_results.py        # figures: accel, ru, lateral displacement
-│   └── compare_with_leap.py   # overlay recorded LEAP data vs simulation
+│   └── compare_with_leap.py   # recorded vs simulated: accel + pore pressure
 ├── report/                    # (generated) PNG figures + summary.txt
 ├── data/                      # LEAP-UCD-2017 data (DesignSafe PRJ-1843)
 ├── requirements.txt
@@ -61,8 +61,8 @@ pip install -r requirements.txt
 python input\leap_input_motion.py
 
 # 2b. ... OR build the base motion from your downloaded LEAP CSV (see below)
-python input\leap_csv_to_motion.py --list
-python input\leap_csv_to_motion.py --base "AH11 (g)" --t0 0 --t1 25
+python input\leap_csv_to_motion.py --list      # inspect channels
+python input\leap_csv_to_motion.py             # base = mean(AH11, AH12)
 
 # 3. run the effective-stress model (gravity + dynamic stages)
 python input\model_2D_slope.py
@@ -70,7 +70,7 @@ python input\model_2D_slope.py
 # 4. post-process -> figures and summary in report\
 python postprocess\plot_results.py
 
-# 5. (if you used real data) overlay recorded vs simulated response
+# 5. (if you used real data) validate against recorded accel + pore pressure
 python postprocess\compare_with_leap.py
 ```
 
@@ -84,38 +84,42 @@ The processed LEAP CSV (e.g. `CU2_Motion1_Processed_4222.csv`) has columns:
 Time (sec), AH1..AH12 (g), AV1..AV2 (g), P1..P10 (kpa)
 ```
 
-- **AHx (g):** horizontal accelerometers (soil array + base/container).
-- **AVx (g):** vertical accelerometers.
-- **Px (kpa):** pore-pressure transducers (PPTs).
+- **AHx (g):** horizontal accelerometers — central array `AH1..AH4`, container
+  base `AH11`/`AH12`.
+- **Px (kpa):** pore-pressure transducers (excess pore pressure) — central
+  array `P1..P4`, base corners `P9`/`P10`.
 
-Key facts about these files (verified on `CU2_Motion1`):
+Key facts (verified on `CU2_Motion1`):
 
 - **Scale:** the data are at **prototype scale** (dominant frequency ≈ 1 Hz,
-  PGA ≈ 0.15–0.23 g). **No centrifuge (1/N) scaling is required** — feed it to
-  the model directly. (If you ever use a *model-scale* file, convert first:
-  prototype time = N·model time, prototype accel = model accel / N, stresses
-  are 1:1.)
-- **Sampling:** a high-rate dynamic segment (~149 Hz, dt ≈ 0.0067 s) up to
-  ~96 s, followed by a coarse post-shaking **consolidation tail** out to ~200 s.
-- **Strong motion:** ~6.8–14.9 s; PPTs build up during shaking then dissipate —
-  i.e. real liquefaction + reconsolidation.
+  PGA ≈ 0.2 g). **No centrifuge (1/N) scaling is required** — feed it directly.
+  (If you ever use a *model-scale* file, convert first: prototype time = N·model
+  time, prototype accel = model accel / N, stresses are 1:1.)
+- **Sampling:** a high-rate dynamic segment (~149 Hz, dt ≈ 0.0067 s) followed by
+  a coarse post-shaking **consolidation tail** out to ~200 s.
+- **Base input motion:** per the LEAP-UCD-2017 spec, it is the **average of
+  `AH11` and `AH12`** (the two container-base accelerometers). `leap_csv_to_motion.py`
+  does this by default.
+- **Central array (for validation):** `P1..P4` and `AH1..AH4` sit at prototype
+  depths ≈ 4, 3, 2, 1 m, with initial σ'v0 ≈ 40, 30, 20, 10 kPa — matching the
+  model's stress profile. Recorded `Px` is *excess* pore pressure, so
+  `ru_recorded = Px / σ'v0(depth)`.
 
-Steps to use it:
+Steps:
 
 1. Put the CSV in `data/`.
-2. `python input\leap_csv_to_motion.py --list` and identify the **base /
-   container** channel from the PRJ-1843 **sensor-layout sheet**. In the
-   standard layout the base accelerometers are `AH11`/`AH12` (raw table content,
-   ~3 Hz), while the soil-embedded sensors (`AH2..AH9`) show the filtered ~1 Hz
-   motion. **Confirm before trusting the default `AH11`.**
-3. `python input\leap_csv_to_motion.py --base "AH11 (g)" --t0 0 --t1 25` writes
-   `input/base_motion.txt` (used by the model) and `data/leap_recorded.csv`
-   (used by the comparison plot).
-4. Run the model and `compare_with_leap.py`.
+2. `python input\leap_csv_to_motion.py --list` to inspect channels (PGA +
+   dominant frequency). Confirm channel names against the PRJ-1843
+   **sensor-layout sheet** for your test.
+3. `python input\leap_csv_to_motion.py` writes `input/base_motion.txt`
+   (base = mean of `AH11`,`AH12`) and `data/leap_recorded.csv`.
+4. Run the model, then `compare_with_leap.py` to overlay **both** the recorded
+   accelerations (`AH1..AH4`) and pore-pressure ratios (`P1..P4`) at matched
+   depths.
 
-> Quantitative PPT/accel comparison needs each sensor's depth/location mapped to
-> a model element — take those positions from the sensor-layout sheet and set
-> them in `postprocess/compare_with_leap.py`.
+> As-built sensor depths vary slightly by facility. The standard LEAP depths are
+> pre-set in `postprocess/compare_with_leap.py` (`ACC_DEPTH`, `PPT_DEPTH`) — edit
+> them to the exact values from the layout sheet for a precise match.
 
 ## Analysis stages
 
@@ -133,12 +137,29 @@ Steps to use it:
 - `output/disp.out`, `accel.out`, `porepressure.out` — nodal time histories.
 - `output/stress.out`, `strain.out` — element (gauss-point) time histories.
 - `output/sigma_v0.out` — initial effective vertical stress per element.
-- `report/*.png` — acceleration, excess pore-pressure ratio (rᵤ), rᵤ-with-depth
-  profile, lateral-displacement, and recorded-vs-simulated comparison figures.
+- `report/acceleration.png`, `excess_pwp_ratio.png`, `ru_profile.png`,
+  `lateral_displacement.png` — simulated response.
+- `report/compare_accel.png`, `compare_ru_time.png`, `compare_ru_profile.png` —
+  recorded-vs-simulated validation (accelerations and pore pressures).
 - `report/summary.txt` — key scalar results.
 
 Excess pore-pressure ratio is reported as `rᵤ = 1 − σ'v(t)/σ'v0` (from element
-effective stress) and cross-checked against the nodal pore-pressure excess.
+effective stress) and cross-checked against the recorded PPT excess.
+
+## Example validation (CU2, Motion 1)
+
+Driven by the recorded base motion (mean of `AH11`,`AH12`, PGA ≈ 0.21 g), the
+model reproduces near-full liquefaction through the central array:
+
+| depth (m) | recorded peak rᵤ | simulated peak rᵤ |
+|----------:|-----------------:|------------------:|
+| 4 | 1.07 | 0.97 |
+| 3 | 1.01 | 1.00 |
+| 2 | 1.03 | 1.00 |
+| 1 | 1.19 | 0.98 |
+
+(Recorded rᵤ slightly exceeds 1 due to transient PPT spikes and the
+approximate sensor depths.)
 
 ## Tuning notes
 
